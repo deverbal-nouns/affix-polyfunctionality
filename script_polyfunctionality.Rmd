@@ -1,0 +1,411 @@
+---
+title: "Affix polyfunctionality in French deverbal nominalizations"
+author: "Justine Salvadori, Richard Huyghe"
+output:
+  html_document:
+    number_sections: true
+    df_print: paged
+---
+
+# Packages and datasets
+
+```{r Working directory}
+setwd("XXX")
+```
+
+```{r Packages, message=FALSE, warning=FALSE}
+library(readxl)
+library(dplyr)
+library(fuzzySim)
+library(tidyverse)
+library(pheatmap)
+library(cooccur)
+library(data.table)
+library(vegan)
+library(knitr)
+library(cluster)
+library(ggpubr)
+library(MeanRarity)
+```
+
+```{r Datasets}
+## Original data set
+data_complete <- read_excel("data_complete.xlsx", sheet = 1)
+data_complete
+
+## Adapted data set (without functions realized only once per suffix)
+data <- data_complete %>% 
+        group_by(SUFFIX, COMBINED_TYPE) %>% 
+        filter(n() > 1) %>% 
+        ungroup()
+data
+
+## Data set for frequency of functions
+data_freq <- read_excel("data_freq.xlsx", sheet = 1)
+data_freq
+```
+
+
+# Distribution of functions among suffixes
+
+## Suffix heterogeneity and functional variety
+
+```{r Distribution of functions}
+## Preparation of the df
+p_a_complete <- splist2presabs(data, 
+                               sites.col = "COMBINED_TYPE", 
+                               sp.col = "SUFFIX", 
+                               keep.n = FALSE)
+names(p_a_complete)[names(p_a_complete) == 'in.'] <- 'in' 
+p_a_complete <- p_a_complete %>% 
+                remove_rownames %>% 
+                column_to_rownames(var = "COMBINED_TYPE")
+colnames(p_a_complete) <- paste("-", colnames(p_a_complete), sep="")
+p_a_complete <- p_a_complete[ ,order(colSums(-p_a_complete))]
+p_a_complete <- p_a_complete[order(rowSums(-p_a_complete)), ]
+p_a_complete
+
+## Plot => Figure 1 
+pheatmap(p_a_complete,
+         legend = F,
+         fontsize = 4,fontsize_row = 4,
+         cellwidth = 4, cellheight = 4,
+         color = c(NA,"gray39"), border_color = "white", 
+         las = 1, 
+         cluster_rows = FALSE, cluster_cols = FALSE)
+```
+
+## Associations between functions
+
+### Ontological functions
+
+```{r Ontological functions}
+## Preparation of the df
+p_a_onto <- splist2presabs(data, 
+                           sites.col = "ONTO_TYPE", 
+                           sp.col = "SUFFIX", 
+                           keep.n = FALSE)
+p_a_onto <- p_a_onto %>% 
+            remove_rownames %>% 
+            column_to_rownames(var = "ONTO_TYPE")
+p_a_onto
+
+## Summary of significant results
+res_coocc_onto <- cooccur(p_a_onto, spp_names = TRUE, thresh = TRUE)
+summary(res_coocc_onto)
+
+## Table of results
+prob.table(res_coocc_onto)
+
+## Summary of positive, negative and random interactions for each function
+pair.attributes(res_coocc_onto)
+
+## Plot
+plot(res_coocc_onto) + ggtitle("") + theme(legend.position="bottom",
+                                           legend.text = element_text(size=12))
+```
+
+### Relational functions
+
+```{r Relational functions}
+## Preparation of the df
+p_a_relation <- splist2presabs(data, 
+                               sites.col = "RELATIONAL_TYPE", 
+                               sp.col = "SUFFIX", 
+                               keep.n = FALSE)
+p_a_relation <- p_a_relation %>% 
+                remove_rownames %>% 
+                column_to_rownames(var = "RELATIONAL_TYPE")
+p_a_relation
+
+## Summary of significant results
+res_coocc_rela <- cooccur(p_a_relation, spp_names = TRUE, thresh = TRUE)
+summary(res_coocc_rela)
+
+## Table of results
+prob.table(res_coocc_rela)
+
+## Summary of positive, negative and random interactions for each function
+pair.attributes(res_coocc_rela)
+
+## Plot
+plot(res_coocc_rela) + ggtitle("") + theme(legend.position="bottom",
+                                           legend.text = element_text(size=12))
+```
+
+### Combined functions
+
+```{r Combined functions}
+## Preparation of the dataframe
+p_a_complete <- splist2presabs(data, 
+                               sites.col = "COMBINED_TYPE", 
+                               sp.col = "SUFFIX", 
+                               keep.n = FALSE)
+p_a_complete <- p_a_complete %>% 
+                remove_rownames %>% 
+                column_to_rownames(var="COMBINED_TYPE")
+p_a_complete
+
+## Summary of significant results
+res_coocc_complete <- cooccur(p_a_complete, spp_names = TRUE, thresh = TRUE)
+summary(res_coocc_complete)
+
+## Table of results
+prob.table(res_coocc_complete)
+
+## Summary of positive, negative and random interactions for each function
+pair.attributes(res_coocc_complete)
+
+## Plot ==> Figure 2
+plot(res_coocc_complete) + ggtitle("") + theme(legend.position="bottom",
+                                               legend.text = element_text(size=12))
+
+```
+
+
+## Hierarchy of functions
+
+```{r Secondary rate}
+## Secondary functions
+sec_functions <-  data %>%
+                  group_by(NOUN, SUFFIX, VERB) %>% 
+                  mutate(NB_SENSE_POLYSEMY = n()) %>%
+                  ungroup() %>%
+                  mutate(POLYSEMY = if_else(NB_SENSE_POLYSEMY > 1, "y", "n")) %>% 
+                  select(SUFFIX, COMBINED_TYPE, POLYSEMY) %>%
+                  distinct(.keep_all = TRUE) %>%
+                  group_by(SUFFIX, COMBINED_TYPE) %>%
+                  filter(n() == 1, POLYSEMY=='y') %>%
+                  select(-POLYSEMY) %>%
+                  ungroup() %>%
+                  group_by(COMBINED_TYPE) %>%
+                  summarise(NB_SUFF_SEC = n_distinct(SUFFIX))
+sec_functions
+
+## Number of suffixes that realize each secondary function
+complete_suff <- data %>%
+                 group_by(COMBINED_TYPE) %>%
+                 summarise(NB_SUFF_TOTAL = n_distinct(SUFFIX),
+                 NB_MEANINGS = n()) %>%
+                 arrange(-NB_SUFF_TOTAL)
+complete_suff
+
+## Rate of secondary realization 
+sec_rate <- merge(sec_functions, complete_suff, by = 'COMBINED_TYPE')
+sec_rate$SEC_RATE <- sec_rate$NB_SUFF_SEC / sec_rate$NB_SUFF_TOTAL 
+sec_rate
+
+## Plot ==> Figure 4
+sec_rate %>%
+  arrange(SEC_RATE) %>% 
+  mutate(COMBINED_TYPE = factor(COMBINED_TYPE, levels=COMBINED_TYPE)) %>% 
+  ggplot(aes(x = COMBINED_TYPE, y = SEC_RATE)) +
+  geom_segment(aes(xend = COMBINED_TYPE, yend = 0)) +
+  geom_point(shape = 15) +
+  coord_flip() +
+  xlab("Combined functions \n ") +
+  ylab("\n Secondarity rate") + 
+  expand_limits(y = 1.02) +
+  scale_y_continuous(expand = c(0,0), breaks = seq(0, 1, 0.1)) +
+  theme_bw() + 
+  theme(text = element_text(size = 12),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(), 
+        axis.line = element_line(colour = "black"))
+```
+
+
+## Polyfunctionality and rivalry
+
+```{r Clustering}
+## Preparation of the df
+p_a_complete <- splist2presabs(data, 
+                               sites.col = "COMBINED_TYPE", 
+                               sp.col = "SUFFIX", 
+                               keep.n = FALSE)
+names(p_a_complete)[names(p_a_complete) == 'in.'] <- 'in' 
+p_a_complete <- p_a_complete %>% 
+                remove_rownames %>% 
+                column_to_rownames(var="COMBINED_TYPE")
+colnames(p_a_complete) <- paste("-", colnames(p_a_complete), sep="")
+p_a_complete <- t(p_a_complete)
+
+## Distance matrix
+distance_suff <- vegdist(p_a_complete, method="bray")  
+as.data.frame(as.matrix(distance_suff))
+
+## Similarity matrix
+simil_suff <- 1-as.matrix(distance_suff) 
+as.data.frame(as.matrix(simil_suff))
+
+## Clustering (method: "average")
+cluster_average <- hclust(distance_suff, method = "average")
+
+## Plot (heatmap + dendrogram) ==> Figure 5 
+pheatmap(simil_suff,
+         scale = "none",
+         clustering_method = "average",
+         clustering_distance_cols = distance_suff,
+         clustering_distance_rows = distance_suff)
+
+## Optimal number of clusters (matrix correlation statistic)
+#### Code from Borcard, D., Gillet, F., & Legendre, P. (2018). Numerical Ecology with R. Springer International Publishing. https://doi.org/10.1007/978-3-319-71404-2
+hc <- cluster_average
+kt <- data.frame(k = 1:nrow(p_a_complete), r = 0)
+grpdist <- function(X)
+{
+	require(cluster)
+	veg <- as.data.frame(as.factor(X))
+	distgr <- daisy(veg, "gower")
+	distgr
+}
+for (i in 2:(nrow(p_a_complete) - 1)) {
+  gr <- cutree(hc, i)
+  distgr <- grpdist(gr)
+  mt <- cor(distance_suff, distgr, method = "pearson") 
+  kt[i, 2] <- mt
+}
+k.best <- which.max(kt$r) 
+plot(
+    kt$k,
+    kt$r,
+    type = "h",
+    main = "Matrix correlation-optimal number of clusters",
+    xlab = "k (number of clusters)",
+    ylab = "Pearson's correlation"
+) 
+axis(
+  1,
+  k.best,
+  paste("optimum", k.best, sep = "\n"), 
+  col = "red",
+  font = 2,
+  col.axis = "red"
+) 
+points(k.best,
+  max(kt$r), 
+  pch = 16, 
+  col = "red", 
+  cex = 1.5
+)
+```
+
+# Frequency of functions 
+
+## Samplying and analysis
+
+```{r Sampling}
+## List of functions previously identified for -ade, -ment and -ure (+ -on)
+ade_fct <- data %>%
+           filter(SUFFIX == "ade") %>%
+           select(COMBINED_TYPE) %>%
+           distinct(.keep_all = TRUE)
+
+ment_fct <- data %>%
+            filter(SUFFIX == "ment") %>%
+            select(COMBINED_TYPE) %>%
+            distinct(.keep_all = TRUE)
+
+ure_fct <- data %>%
+           filter(SUFFIX == "ure") %>%
+           select(COMBINED_TYPE) %>%
+           distinct(.keep_all = TRUE)
+
+on_fct <- data %>%
+          filter(SUFFIX == "on") %>%
+          select(COMBINED_TYPE) %>%
+          distinct(.keep_all = TRUE)
+
+## Relevant meanings
+keep <- data_freq %>%
+        select(SUFFIX, NOUN, VERB, COMBINED_TYPE) %>%
+        mutate(EXISTING_FCT = case_when(
+                (SUFFIX == "ade" & COMBINED_TYPE %in% ade_fct$COMBINED_TYPE) ~ "y",
+                (SUFFIX == "ment" & COMBINED_TYPE %in% ment_fct$COMBINED_TYPE) ~ "y",
+                (SUFFIX == "ure" & COMBINED_TYPE %in% ure_fct$COMBINED_TYPE) ~ "y",
+                (SUFFIX == "on" & COMBINED_TYPE %in% on_fct$COMBINED_TYPE) ~ "y",
+                 TRUE ~ "n")) %>%
+        group_by(SUFFIX, COMBINED_TYPE) %>%
+        mutate(COUNT = n()) %>%
+        ungroup() %>%
+        filter(EXISTING_FCT == "y" | COUNT > 1)
+keep
+```
+
+## Polyfunctionality and diversity
+
+```{r Frequencies}
+## Prepare the df
+plot_freq <- keep %>% filter(SUFFIX != "on") 
+plot_freq$SUFFIX <- sub("^","-", plot_freq$SUFFIX)
+plot_freq <- plot_freq %>%
+             distinct(SUFFIX, COMBINED_TYPE, COUNT, .keep_all = FALSE) %>%
+             arrange(SUFFIX, COMBINED_TYPE)
+plot_freq
+
+## Plot - Balloon ==> Figure 6
+balloon <- ggplot(plot_freq, 
+                  aes(x = SUFFIX, y = COMBINED_TYPE)) 
+balloon + geom_point(aes(size = COUNT),
+                     shape = 21,
+                     fill = "darkgray",
+                     color = "black") + 
+          scale_y_discrete(limits = rev) +
+          scale_x_discrete(position = "top") +
+          theme_bw() + 
+          theme(text = element_text(size = 15),
+                panel.border = element_blank(),
+                axis.title.x = element_blank(),
+                axis.title.y = element_blank()) +
+          labs(size = "Frequency")
+```
+
+```{r Hill-Shannon diversity}
+## Abundance table
+hill_abund <- keep %>% filter(SUFFIX != "on")
+hill_abund <- splist2presabs(hill_abund, 
+                             sites.col = "SUFFIX", 
+                             sp.col = "COMBINED_TYPE", 
+                             keep.n = TRUE)
+hill_abund <- hill_abund %>%
+              remove_rownames %>% 
+              column_to_rownames(var="SUFFIX")
+hill_abund
+
+## Hill-Shannon diversity: -ade
+ade_abund <- as.numeric(as.vector(hill_abund[1,]))
+rarity(ade_abund, 0)
+
+## Hill-Shannon diversity: -ment
+ment_abund <- as.numeric(as.vector(hill_abund[2,]))
+rarity(ment_abund, 0)
+
+## Hill-Shannon diversity: -ure
+ure_abund <- as.numeric(as.vector(hill_abund[3,]))
+rarity(ure_abund, 0)
+```
+
+## Competition
+
+```{r Bray-Curtis}
+## Abundance table
+bray_abundance <- splist2presabs(keep,
+                  sites.col = "SUFFIX", 
+                  sp.col = "COMBINED_TYPE", 
+                  keep.n = TRUE)
+bray_abundance <- bray_abundance %>%
+                  remove_rownames %>% 
+                  column_to_rownames(var = "SUFFIX")
+bray_abundance
+
+## Dissimilarity matrix
+bray_dist <- vegdist(bray_abundance, method="bray")
+as.data.frame(as.matrix(bray_dist))
+
+## Similarity matrix
+bray_sim <- 1-as.matrix(bray_dist)
+as.data.frame(as.matrix(bray_sim))
+```
+
+
