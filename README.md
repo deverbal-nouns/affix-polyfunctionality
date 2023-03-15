@@ -1,6 +1,6 @@
 ## Affix polyfunctionality in French deverbal nominalizations
 
-This repository contains supplementary material for *Affix polyfunctionality in French deverbal nominalizations* (Salvadori and Huyghe, accepted for publication in *Morphology*):
+This repository contains supplementary material for *Affix polyfunctionality in French deverbal nominalizations* (Salvadori and Huyghe 2023, *Morphology* 33, 1–39, https://link.springer.com/article/10.1007/s11525-022-09401-4):
 
 | File  | Description | Comment |
 | :--- | :--- | :--- | 
